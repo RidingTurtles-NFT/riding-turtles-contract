@@ -1,0 +1,28 @@
+{
+  "name": "riding-turtles-contract",
+  "version": "1.0",
+  "description": "Smart Contract Repo for NFT project RidingTurtles",
+  "author": "Alexander Maitz & Peter Holzer",
+  "license": "UNLICENSED",
+  "scripts": {
+    "ganache": "npx ganache-cli -q -p 7545 -e 1000000",
+    "test": "rm -rf ./build && npx truffle test",
+    "test:specific": "rm -rf ./build && npx truffle test ./test/FusionNft.test.js",
+    "coverage": "rm -rf ./build && npx truffle run coverage",
+    "kill:ganache": "kill `lsof -n -i:7545 -t`",
+    "compile": "rm -rf ./build && npx truffle compile",
+    "migrate": "echo 'Migrations are not maintained, use dedicated deploy scripts!'"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.1.0",
+    "@openzeppelin/test-helpers": "^0.5.11",
+    "@truffle/hdwallet-provider": "^1.4.0",
+    "dotenv": "^9.0.2",
+    "ganache-cli": "^6.12.2",
+    "truffle": "^5.3.4",
+    "web3": "^1.3.5"
+  },
+  "devDependencies": {
+    "solidity-coverage": "^0.7.16"
+  }
+}
