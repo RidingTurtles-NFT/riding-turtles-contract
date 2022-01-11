@@ -11,20 +11,24 @@ contract FusionNft is ERC721Enumerable, Ownable, TokenHolder {
     // events
     event PaymentReceived(address from, uint256 amount);
     event NftMinted(address to, uint16 tokenId);
+    event ExternalNftAssigned(address contractAddress, uint16 externalId, uint16 tokenId);
+    event ExternalNftUnassigned(address contractAddress, uint16 externalId, uint16 tokenId);
 
     // constants
     uint16 private constant _maxNfts = 15000;
-    uint16 private constant _maxOwnerMint = 200; // 100 + 100 specials
+    uint16 private constant _maxOwnerMint = 300; // 200 + 100 specials
+    uint16 private constant _maxPresetMinted = 10; // for transition to Polygon
     uint8 private constant _maxLevel = 3;
     uint16 private constant _firstMintDiscountAmount = 1000; // first x nfts get a discount
-    uint256 private constant _firstMintDiscountPrice = 30000000000000000; // 0.03 ETH;
-    uint256 private constant _mintPrice = 50000000000000000; // 0.05 ETH
+    uint256 private constant _firstMintDiscountPrice = 20000000000000000000; // 20 MATIC;
+    uint256 private constant _mintPrice = 30000000000000000000; // 30 MATIC
     uint8[] private _traitVariations = [72, 12, 27, 19, 29, 28, 17, 21]; // maximum different types of each trait, without level (first) and special (last)
 
     // counter
     uint16 private _tokenId = 0;
     uint16 private _minted = 0;
     uint16 private _ownerMinted = 0;
+    uint16 private _presetMinted = 0;
     uint16 private _fused = 0;
     uint8 private _specialId = 0;
 
@@ -33,6 +37,7 @@ contract FusionNft is ERC721Enumerable, Ownable, TokenHolder {
     INftRandomness private _randGen;
     bool private _isMintingAndFusingPaused = false;
     mapping (bytes32 => bool) private _existingTraitHashes;
+    mapping (address => bool) private _externalOperators;
 
     struct Traits {
         uint8 level;
@@ -57,6 +62,11 @@ contract FusionNft is ERC721Enumerable, Ownable, TokenHolder {
         _;
     }
 
+    modifier onlyExternalOperator() {
+        require(_externalOperators[msg.sender], "F16");
+        _;
+    }
+
     function getTraitsHash(Traits memory traits) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(traits.level, traits.board, traits.shell, traits.eyes, traits.mouth, traits.skin, traits.head, traits.jewellery, traits.shoes));
     }
@@ -67,6 +77,26 @@ contract FusionNft is ERC721Enumerable, Ownable, TokenHolder {
 
     function setBaseURI(string memory baseURI) public onlyOwner {
         _baseTokenURI = baseURI;
+    }
+
+    function addExternalOperator(address externalOperator) public onlyOwner {
+        _externalOperators[externalOperator] = true;
+    }
+
+    function removeExternalOperator(address externalOperator) public onlyOwner {
+        delete _externalOperators[externalOperator];
+    }
+
+    function externalNftAssigned(uint16 externalId, uint16 tokenId) external onlyExternalOperator {
+        require(_tokenIdToTraits[tokenId].special == 0, "F17");
+        require(_tokenIdToTraits[tokenId].level > 0, "F18");
+        emit ExternalNftAssigned(msg.sender, externalId, tokenId);
+    }
+
+    function externalNftUnassigned(uint16 externalId, uint16 tokenId) external onlyExternalOperator {
+        require(_tokenIdToTraits[tokenId].special == 0, "F17");
+        require(_tokenIdToTraits[tokenId].level > 0, "F18");
+        emit ExternalNftUnassigned(msg.sender, externalId, tokenId);
     }
 
     function contractURI() public view returns (string memory) {
@@ -127,6 +157,18 @@ contract FusionNft is ERC721Enumerable, Ownable, TokenHolder {
             _ownerMinted ++;
             _tokenId ++; // has to be the last call in this function/loop
         }
+    }
+
+    function presetMint(address newOwner, uint8[] calldata traits) external onlyOwner mintingAndFusingNotPaused {
+        require(_minted + 1 <= _maxNfts - _maxOwnerMint, "F8");
+        require(_presetMinted + 1 <= _maxPresetMinted, "F15");
+        require(traits.length == _traitVariations.length + 2, "F14");
+        _safeMint(newOwner, _tokenId);
+        saveNewTraitsPreset(traits);
+        emit NftMinted(newOwner, _tokenId);
+        _presetMinted ++;
+        _minted ++; // is also incremented here to ensure limits
+        _tokenId ++; // has to be the last call in this function/loop
     }
 
     function getMintPrice(uint16 amount) internal view returns (uint256) {
@@ -206,6 +248,25 @@ contract FusionNft is ERC721Enumerable, Ownable, TokenHolder {
         _tokenIdToTraits[_tokenId] = newTraits;
     }
 
+    // for minting previously existing NFTs at transition to Polygon
+    function saveNewTraitsPreset(uint8[] memory traits) internal {
+        Traits memory newTraits = Traits(
+            traits[0],
+            traits[1],
+            traits[2],
+            traits[3],
+            traits[4],
+            traits[5],
+            traits[6],
+            traits[7],
+            traits[8],
+            traits[9]
+        );
+        _tokenIdToTraits[_tokenId] = newTraits;
+        bytes32 traitsHash = getTraitsHash(newTraits);
+        _existingTraitHashes[traitsHash] = true;
+    }
+
     function generateFusionTraits(address newOwner, uint16 firstTokenId, uint16 secondTokenId) internal {
         bool uniqueTraitHashFound = false;
         Traits memory newTraits;
@@ -271,7 +332,6 @@ contract FusionNft is ERC721Enumerable, Ownable, TokenHolder {
     function invertMintingAndFusingPauseState() public onlyOwner {
         _isMintingAndFusingPaused = !_isMintingAndFusingPaused;
     }
-
 
     function isMintingAndFusingPaused() external view returns (bool) {
         return _isMintingAndFusingPaused;
